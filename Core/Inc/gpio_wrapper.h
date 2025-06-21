@@ -13,7 +13,7 @@ typedef struct {
 
 // GPIO configuration structure
 typedef struct {
-    uint8_t mode;        // Input/Output
+    uint8_t mode;        // Input/Output/Analog
     uint8_t pull;        // No pull/Pull-up/Pull-down
     uint8_t speed;       // Low/Medium/High speed
 } GPIO_Config_t;
@@ -21,6 +21,7 @@ typedef struct {
 // GPIO modes (using HAL definitions)
 #define GPIO_WRAPPER_MODE_INPUT      GPIO_MODE_INPUT
 #define GPIO_WRAPPER_MODE_OUTPUT     GPIO_MODE_OUTPUT_PP
+#define GPIO_WRAPPER_MODE_ANALOG     GPIO_MODE_ANALOG
 
 // GPIO pull configurations
 #define GPIO_WRAPPER_PULL_NONE      GPIO_NOPULL
@@ -50,5 +51,12 @@ void GPIO_Wrapper_PWM_Disable(uint8_t gpio_num);
 void GPIO_Wrapper_PWM_SetDutyCycle(uint8_t gpio_num, uint8_t duty_cycle);
 void GPIO_Wrapper_PWM_SetFrequency(uint8_t gpio_num, uint32_t frequency_hz);
 uint8_t GPIO_Wrapper_PWM_IsEnabled(uint8_t gpio_num);
+
+// ADC function declarations
+void GPIO_Wrapper_ADC_Init(void);
+uint8_t GPIO_Wrapper_ADC_Enable(uint8_t gpio_num);
+void GPIO_Wrapper_ADC_Disable(uint8_t gpio_num);
+uint16_t GPIO_Wrapper_ADC_Read(uint8_t gpio_num);
+uint8_t GPIO_Wrapper_ADC_IsEnabled(uint8_t gpio_num);
 
 #endif /* GPIO_WRAPPER_H */ 

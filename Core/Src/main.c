@@ -107,6 +107,7 @@ int main(void)
   MX_USART1_UART_Init();
   GPIO_Wrapper_Init();
   GPIO_Wrapper_PWM_Init();
+  GPIO_Wrapper_ADC_Init();
   GPIO_Config_t config = {
       .mode = GPIO_WRAPPER_MODE_OUTPUT,
       .pull = GPIO_WRAPPER_PULL_UP,
@@ -334,6 +335,15 @@ void Process_UART_DMA_Buffer(uint16_t length) {
                         GPIO_Wrapper_SetMode(gpio_num, GPIO_WRAPPER_MODE_OUTPUT);
                         len = sprintf(response, "GPIO%d: Output", gpio_num);
                         break;
+                    case 'A': {
+                        uint8_t result = GPIO_Wrapper_ADC_Enable(gpio_num);
+                        if (result) {
+                            len = sprintf(response, "GPIO%d: ADC enabled", gpio_num);
+                        } else {
+                            len = sprintf(response, "GPIO%d: ADC not supported", gpio_num);
+                        }
+                        break;
+                    }
                     case '1':
                         GPIO_Wrapper_Write(gpio_num, 1);
                         len = sprintf(response, "GPIO%d: HIGH", gpio_num);
@@ -345,6 +355,15 @@ void Process_UART_DMA_Buffer(uint16_t length) {
                     case '?': {
                         uint8_t value = GPIO_Wrapper_Read(gpio_num);
                         len = sprintf(response, "GPIO%d: %d", gpio_num, value);
+                        break;
+                    }
+                    case 'R': {
+                        if (GPIO_Wrapper_ADC_IsEnabled(gpio_num)) {
+                            uint16_t adc_value = GPIO_Wrapper_ADC_Read(gpio_num);
+                            len = sprintf(response, "GPIO%d: ADC %d", gpio_num, adc_value);
+                        } else {
+                            len = sprintf(response, "GPIO%d: ADC not enabled", gpio_num);
+                        }
                         break;
                     }
                     case 'D': {
