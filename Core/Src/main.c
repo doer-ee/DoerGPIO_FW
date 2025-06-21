@@ -106,6 +106,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   GPIO_Wrapper_Init();
+  GPIO_Wrapper_PWM_Init();
   GPIO_Config_t config = {
       .mode = GPIO_WRAPPER_MODE_OUTPUT,
       .pull = GPIO_WRAPPER_PULL_UP,
@@ -346,18 +347,92 @@ void Process_UART_DMA_Buffer(uint16_t length) {
                         len = sprintf(response, "GPIO%d: %d", gpio_num, value);
                         break;
                     }
-                    case 'D':
-                        GPIO_Wrapper_SetPull(gpio_num, GPIO_WRAPPER_PULL_DOWN);
-                        len = sprintf(response, "GPIO%d: Pull-down", gpio_num);
+                    case 'D': {
+                        uint8_t result = GPIO_Wrapper_SetPull(gpio_num, GPIO_WRAPPER_PULL_DOWN);
+                        if (result) {
+                            len = sprintf(response, "GPIO%d: Pull-down", gpio_num);
+                        } else {
+                            len = sprintf(response, "GPIO%d: Pull-down skipped (input only)", gpio_num);
+                        }
                         break;
-                    case 'U':
-                        GPIO_Wrapper_SetPull(gpio_num, GPIO_WRAPPER_PULL_UP);
-                        len = sprintf(response, "GPIO%d: Pull-up", gpio_num);
+                    }
+                    case 'U': {
+                        uint8_t result = GPIO_Wrapper_SetPull(gpio_num, GPIO_WRAPPER_PULL_UP);
+                        if (result) {
+                            len = sprintf(response, "GPIO%d: Pull-up", gpio_num);
+                        } else {
+                            len = sprintf(response, "GPIO%d: Pull-up skipped (input only)", gpio_num);
+                        }
                         break;
-                    case 'N':
-                        GPIO_Wrapper_SetPull(gpio_num, GPIO_WRAPPER_PULL_NONE);
-                        len = sprintf(response, "GPIO%d: No pull", gpio_num);
+                    }
+                    case 'N': {
+                        uint8_t result = GPIO_Wrapper_SetPull(gpio_num, GPIO_WRAPPER_PULL_NONE);
+                        if (result) {
+                            len = sprintf(response, "GPIO%d: No pull", gpio_num);
+                        } else {
+                            len = sprintf(response, "GPIO%d: No pull skipped (input only)", gpio_num);
+                        }
                         break;
+                    }
+                    case 'P': {
+                        uint8_t result = GPIO_Wrapper_PWM_Enable(gpio_num);
+                        if (result) {
+                            len = sprintf(response, "GPIO%d: PWM enabled", gpio_num);
+                        } else {
+                            len = sprintf(response, "GPIO%d: PWM not supported", gpio_num);
+                        }
+                        break;
+                    }
+                    case 'F': {
+                        // Extract frequency value from next bytes in buffer
+                        if (i + 3 < stop_index) { // Need at least 2 more bytes for frequency
+                            uint32_t frequency = 0;
+                            // Parse frequency from next bytes (up to 6 digits for 500000 max)
+                            for (uint8_t j = i + 2; j < stop_index && j < i + 8; j++) {
+                                if (uart_rx_dma_buffer[j] >= '0' && uart_rx_dma_buffer[j] <= '9') {
+                                    frequency = frequency * 10 + (uart_rx_dma_buffer[j] - '0');
+                                } else {
+                                    break; // Stop at first non-digit
+                                }
+                            }
+                            if (GPIO_Wrapper_PWM_IsEnabled(gpio_num)) {
+                                GPIO_Wrapper_PWM_SetFrequency(gpio_num, frequency);
+                                if (gpio_num == 4 || gpio_num == 22) {
+                                    len = sprintf(response, "GPIO%d: Freq %luHz (shared GPIO4/22)", gpio_num, frequency);
+                                } else {
+                                    len = sprintf(response, "GPIO%d: Freq %luHz", gpio_num, frequency);
+                                }
+                            } else {
+                                len = sprintf(response, "GPIO%d: PWM not enabled", gpio_num);
+                            }
+                        } else {
+                            len = sprintf(response, "GPIO%d: Missing freq value", gpio_num);
+                        }
+                        break;
+                    }
+                    case 'C': {
+                        // Extract duty cycle value from next bytes in buffer
+                        if (i + 2 < stop_index) { // Need at least 1 more byte for duty cycle
+                            uint8_t duty_cycle = 0;
+                            // Parse duty cycle from next bytes (assuming decimal ASCII)
+                            for (uint8_t j = i + 2; j < stop_index && j < i + 5; j++) {
+                                if (uart_rx_dma_buffer[j] >= '0' && uart_rx_dma_buffer[j] <= '9') {
+                                    duty_cycle = duty_cycle * 10 + (uart_rx_dma_buffer[j] - '0');
+                                } else {
+                                    break; // Stop at first non-digit
+                                }
+                            }
+                            if (GPIO_Wrapper_PWM_IsEnabled(gpio_num)) {
+                                GPIO_Wrapper_PWM_SetDutyCycle(gpio_num, duty_cycle);
+                                len = sprintf(response, "GPIO%d: Duty %d%%", gpio_num, duty_cycle);
+                            } else {
+                                len = sprintf(response, "GPIO%d: PWM not enabled", gpio_num);
+                            }
+                        } else {
+                            len = sprintf(response, "GPIO%d: Missing duty value", gpio_num);
+                        }
+                        break;
+                    }
                     default:
                         len = sprintf(response, "GPIO%d: Invalid cmd", gpio_num);
                         break;

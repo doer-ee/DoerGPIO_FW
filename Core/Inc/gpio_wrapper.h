@@ -2,6 +2,7 @@
 #define GPIO_WRAPPER_H
 
 #include "stm32f0xx_hal.h"
+#include "stm32f0xx_hal_tim.h"
 #include <stdint.h>
 
 // GPIO pin mapping structure
@@ -34,11 +35,20 @@ typedef struct {
 // Function declarations
 void GPIO_Wrapper_Init(void);
 void GPIO_Wrapper_Configure(uint8_t gpio_num, GPIO_Config_t config);
+void GPIO_Wrapper_CleanupPin(uint8_t gpio_num);
 void GPIO_Wrapper_SetMode(uint8_t gpio_num, uint8_t mode);
-void GPIO_Wrapper_SetPull(uint8_t gpio_num, uint8_t pull);
+uint8_t GPIO_Wrapper_SetPull(uint8_t gpio_num, uint8_t pull);
 void GPIO_Wrapper_SetSpeed(uint8_t gpio_num, uint8_t speed);
 void GPIO_Wrapper_Write(uint8_t gpio_num, uint8_t state);
 uint8_t GPIO_Wrapper_Read(uint8_t gpio_num);
 void GPIO_Wrapper_Toggle(uint8_t gpio_num);
+
+// PWM function declarations
+void GPIO_Wrapper_PWM_Init(void);
+uint8_t GPIO_Wrapper_PWM_Enable(uint8_t gpio_num);
+void GPIO_Wrapper_PWM_Disable(uint8_t gpio_num);
+void GPIO_Wrapper_PWM_SetDutyCycle(uint8_t gpio_num, uint8_t duty_cycle);
+void GPIO_Wrapper_PWM_SetFrequency(uint8_t gpio_num, uint32_t frequency_hz);
+uint8_t GPIO_Wrapper_PWM_IsEnabled(uint8_t gpio_num);
 
 #endif /* GPIO_WRAPPER_H */ 
