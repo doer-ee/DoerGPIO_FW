@@ -39,6 +39,9 @@ static const GPIO_Mapping_t gpio_mapping[] = {
 // PWM timer handles
 static TIM_HandleTypeDef htim1;
 static TIM_HandleTypeDef htim3;
+static TIM_HandleTypeDef htim14;
+static TIM_HandleTypeDef htim16;
+static TIM_HandleTypeDef htim17;
 
 // PWM enabled flags and current periods
 static uint8_t pwm_enabled[GPIO_MAPPING_SIZE] = {0};
@@ -242,8 +245,11 @@ void GPIO_Wrapper_PWM_Init(void)
     // Enable timer clocks
     __HAL_RCC_TIM1_CLK_ENABLE();
     __HAL_RCC_TIM3_CLK_ENABLE();
+    __HAL_RCC_TIM14_CLK_ENABLE();
+    __HAL_RCC_TIM16_CLK_ENABLE();
+    __HAL_RCC_TIM17_CLK_ENABLE();
     
-    // Initialize TIM1 for GPIO 4 (PA8) - TIM1_CH1
+    // Initialize TIM1 for GPIO 4 (PA8) and GPIO 22 (PA11)
     htim1.Instance = TIM1;
     htim1.Init.Prescaler = 7;   // 8MHz / 8 = 1MHz timer clock (assuming HSI 8MHz)
     htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
@@ -251,24 +257,45 @@ void GPIO_Wrapper_PWM_Init(void)
     htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim1.Init.RepetitionCounter = 0;
     htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_PWM_Init(&htim1);
     
-    if (HAL_TIM_PWM_Init(&htim1) != HAL_OK) {
-        // Error handling
-        return;
-    }
-    
-    // Initialize TIM3 for GPIO 22 (PA11) - TIM3_CH2 (if available)
+    // Initialize TIM3 for GPIO 9 (PA6), GPIO 10 (PA7), GPIO 18 (PB1), GPIO 26 (PB0)
     htim3.Instance = TIM3;
-    htim3.Init.Prescaler = 7;   // 8MHz / 8 = 1MHz timer clock (assuming HSI 8MHz)
+    htim3.Init.Prescaler = 7;   // 8MHz / 8 = 1MHz timer clock
     htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
     htim3.Init.Period = 999;    // 1MHz / 1000 = 1kHz PWM frequency
     htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_PWM_Init(&htim3);
     
-    if (HAL_TIM_PWM_Init(&htim3) != HAL_OK) {
-        // Error handling
-        return;
-    }
+    // Initialize TIM14 for GPIO 10 (PA7)
+    htim14.Instance = TIM14;
+    htim14.Init.Prescaler = 7;   // 8MHz / 8 = 1MHz timer clock
+    htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim14.Init.Period = 999;    // 1MHz / 1000 = 1kHz PWM frequency
+    htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_PWM_Init(&htim14);
+    
+    // TIM15 not available on STM32F070C6
+    
+    // Initialize TIM16 for GPIO 9 (PA6), GPIO 16 (PB8)
+    htim16.Instance = TIM16;
+    htim16.Init.Prescaler = 7;   // 8MHz / 8 = 1MHz timer clock
+    htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim16.Init.Period = 999;    // 1MHz / 1000 = 1kHz PWM frequency
+    htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_PWM_Init(&htim16);
+    
+    // Initialize TIM17 for GPIO 10 (PA7), GPIO 20 (PB9)
+    htim17.Instance = TIM17;
+    htim17.Init.Prescaler = 7;   // 8MHz / 8 = 1MHz timer clock
+    htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim17.Init.Period = 999;    // 1MHz / 1000 = 1kHz PWM frequency
+    htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    HAL_TIM_PWM_Init(&htim17);
 }
 
 uint8_t GPIO_Wrapper_PWM_Enable(uint8_t gpio_num)
@@ -344,6 +371,129 @@ uint8_t GPIO_Wrapper_PWM_Enable(uint8_t gpio_num)
         pwm_periods[gpio_num] = 999;  // Store initial period (1kHz)
         return 1;
     }
+    // TIM3 PWM pins
+    else if (gpio_num == 9) { // GPIO 9 (PA6) - TIM3_CH1
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+        GPIO_InitStruct.Pin = GPIO_PIN_6;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+        
+        sConfigOC.OCMode = TIM_OCMODE_PWM1;
+        sConfigOC.Pulse = 0;
+        sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+        sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+        HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1);
+        HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+        
+        pwm_enabled[gpio_num] = 1;
+        pwm_periods[gpio_num] = 999;
+        return 1;
+    }
+    else if (gpio_num == 10) { // GPIO 10 (PA7) - TIM3_CH2
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
+        GPIO_InitStruct.Pin = GPIO_PIN_7;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+        
+        sConfigOC.OCMode = TIM_OCMODE_PWM1;
+        sConfigOC.Pulse = 0;
+        sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+        sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+        HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2);
+        HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+        
+        pwm_enabled[gpio_num] = 1;
+        pwm_periods[gpio_num] = 999;
+        return 1;
+    }
+    else if (gpio_num == 18) { // GPIO 18 (PB1) - TIM3_CH4
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_4);
+        GPIO_InitStruct.Pin = GPIO_PIN_1;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        
+        sConfigOC.OCMode = TIM_OCMODE_PWM1;
+        sConfigOC.Pulse = 0;
+        sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+        sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+        HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4);
+        HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
+        
+        pwm_enabled[gpio_num] = 1;
+        pwm_periods[gpio_num] = 999;
+        return 1;
+    }
+    else if (gpio_num == 26) { // GPIO 26 (PB0) - TIM3_CH3
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+        GPIO_InitStruct.Pin = GPIO_PIN_0;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        
+        sConfigOC.OCMode = TIM_OCMODE_PWM1;
+        sConfigOC.Pulse = 0;
+        sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+        sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+        HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3);
+        HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+        
+        pwm_enabled[gpio_num] = 1;
+        pwm_periods[gpio_num] = 999;
+        return 1;
+    }
+    // TIM16 PWM pins (alternative timers for some pins)
+    else if (gpio_num == 16) { // GPIO 16 (PB8) - TIM16_CH1
+        HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+        GPIO_InitStruct.Pin = GPIO_PIN_8;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        GPIO_InitStruct.Alternate = GPIO_AF2_TIM16;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        
+        sConfigOC.OCMode = TIM_OCMODE_PWM1;
+        sConfigOC.Pulse = 0;
+        sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+        sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+        HAL_TIM_PWM_ConfigChannel(&htim16, &sConfigOC, TIM_CHANNEL_1);
+        HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+        
+        pwm_enabled[gpio_num] = 1;
+        pwm_periods[gpio_num] = 999;
+        return 1;
+    }
+    // TIM17 PWM pins (alternative timers for some pins)
+    else if (gpio_num == 20) { // GPIO 20 (PB9) - TIM17_CH1
+        HAL_TIM_PWM_Stop(&htim17, TIM_CHANNEL_1);
+        GPIO_InitStruct.Pin = GPIO_PIN_9;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        GPIO_InitStruct.Alternate = GPIO_AF0_TIM17;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        
+        sConfigOC.OCMode = TIM_OCMODE_PWM1;
+        sConfigOC.Pulse = 0;
+        sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+        sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+        HAL_TIM_PWM_ConfigChannel(&htim17, &sConfigOC, TIM_CHANNEL_1);
+        HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
+        
+        pwm_enabled[gpio_num] = 1;
+        pwm_periods[gpio_num] = 999;
+        return 1;
+    }
     
     return 0;
 }
@@ -382,6 +532,75 @@ void GPIO_Wrapper_PWM_Disable(uint8_t gpio_num)
         pwm_enabled[gpio_num] = 0;
         pwm_periods[gpio_num] = 0;
     }
+    // TIM3 pins
+    else if (gpio_num == 9) { // GPIO 9 (PA6) - TIM3_CH1
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+        GPIO_InitTypeDef GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = GPIO_PIN_6;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+        pwm_enabled[gpio_num] = 0;
+        pwm_periods[gpio_num] = 0;
+    }
+    else if (gpio_num == 10) { // GPIO 10 (PA7) - TIM3_CH2
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
+        GPIO_InitTypeDef GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = GPIO_PIN_7;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+        pwm_enabled[gpio_num] = 0;
+        pwm_periods[gpio_num] = 0;
+    }
+    else if (gpio_num == 18) { // GPIO 18 (PB1) - TIM3_CH4
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_4);
+        GPIO_InitTypeDef GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = GPIO_PIN_1;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        pwm_enabled[gpio_num] = 0;
+        pwm_periods[gpio_num] = 0;
+    }
+    else if (gpio_num == 26) { // GPIO 26 (PB0) - TIM3_CH3
+        HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+        GPIO_InitTypeDef GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = GPIO_PIN_0;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        pwm_enabled[gpio_num] = 0;
+        pwm_periods[gpio_num] = 0;
+    }
+    // TIM16 pins
+    else if (gpio_num == 16) { // GPIO 16 (PB8) - TIM16_CH1
+        HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+        GPIO_InitTypeDef GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = GPIO_PIN_8;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        pwm_enabled[gpio_num] = 0;
+        pwm_periods[gpio_num] = 0;
+    }
+    // TIM17 pins
+    else if (gpio_num == 20) { // GPIO 20 (PB9) - TIM17_CH1
+        HAL_TIM_PWM_Stop(&htim17, TIM_CHANNEL_1);
+        GPIO_InitTypeDef GPIO_InitStruct = {0};
+        GPIO_InitStruct.Pin = GPIO_PIN_9;
+        GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        pwm_enabled[gpio_num] = 0;
+        pwm_periods[gpio_num] = 0;
+    }
 }
 
 void GPIO_Wrapper_PWM_SetDutyCycle(uint8_t gpio_num, uint8_t duty_cycle)
@@ -390,37 +609,60 @@ void GPIO_Wrapper_PWM_SetDutyCycle(uint8_t gpio_num, uint8_t duty_cycle)
         return;
     }
     
-    // Only GPIO 4 and 22 support PWM (both use TIM1)
-    if (gpio_num != 4 && gpio_num != 22) {
-        return;
-    }
-    
     // Clamp duty cycle to 0-100%
     if (duty_cycle > 100) {
         duty_cycle = 100;
     }
     
-    // Use the actual timer period (shared between both channels)
-    uint16_t current_period = __HAL_TIM_GET_AUTORELOAD(&htim1);
+    uint16_t pulse_value;
     
-    uint16_t pulse_value = (uint16_t)((duty_cycle * (current_period + 1)) / 100);
-    
-    if (gpio_num == 4) { // GPIO 4 (PA8) - TIM1_CH1
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pulse_value);
+    // TIM1 pins (GPIO 4, 22)
+    if (gpio_num == 4 || gpio_num == 22) {
+        uint16_t current_period = __HAL_TIM_GET_AUTORELOAD(&htim1);
+        pulse_value = (uint16_t)((duty_cycle * (current_period + 1)) / 100);
+        
+        if (gpio_num == 4) { // GPIO 4 (PA8) - TIM1_CH1
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pulse_value);
+        }
+        else if (gpio_num == 22) { // GPIO 22 (PA11) - TIM1_CH4
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, pulse_value);
+        }
     }
-    else if (gpio_num == 22) { // GPIO 22 (PA11) - TIM1_CH4
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, pulse_value);
+    // TIM3 pins (GPIO 9, 10, 18, 26)
+    else if (gpio_num == 9 || gpio_num == 10 || gpio_num == 18 || gpio_num == 26) {
+        uint16_t current_period = __HAL_TIM_GET_AUTORELOAD(&htim3);
+        pulse_value = (uint16_t)((duty_cycle * (current_period + 1)) / 100);
+        
+        if (gpio_num == 9) { // GPIO 9 (PA6) - TIM3_CH1
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse_value);
+        }
+        else if (gpio_num == 10) { // GPIO 10 (PA7) - TIM3_CH2
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, pulse_value);
+        }
+        else if (gpio_num == 18) { // GPIO 18 (PB1) - TIM3_CH4
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, pulse_value);
+        }
+        else if (gpio_num == 26) { // GPIO 26 (PB0) - TIM3_CH3
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, pulse_value);
+        }
+    }
+    // TIM16 pins (GPIO 16)
+    else if (gpio_num == 16) {
+        uint16_t current_period = __HAL_TIM_GET_AUTORELOAD(&htim16);
+        pulse_value = (uint16_t)((duty_cycle * (current_period + 1)) / 100);
+        __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, pulse_value);
+    }
+    // TIM17 pins (GPIO 20)
+    else if (gpio_num == 20) {
+        uint16_t current_period = __HAL_TIM_GET_AUTORELOAD(&htim17);
+        pulse_value = (uint16_t)((duty_cycle * (current_period + 1)) / 100);
+        __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, pulse_value);
     }
 }
 
 void GPIO_Wrapper_PWM_SetFrequency(uint8_t gpio_num, uint32_t frequency_hz)
 {
     if (gpio_num >= GPIO_MAPPING_SIZE || !pwm_enabled[gpio_num]) {
-        return;
-    }
-    
-    // Only GPIO 4 and 22 support PWM (both use TIM1)
-    if (gpio_num != 4 && gpio_num != 22) {
         return;
     }
     
@@ -440,32 +682,95 @@ void GPIO_Wrapper_PWM_SetFrequency(uint8_t gpio_num, uint32_t frequency_hz)
         new_period = 65535;
     }
     
-    // Since GPIO 4 and 22 share TIM1, changing frequency affects both channels
-    // Stop both channels if they're enabled
-    if (pwm_enabled[4]) {
-        HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+    // Handle TIM1 pins (GPIO 4, 22)
+    if (gpio_num == 4 || gpio_num == 22) {
+        // Stop both TIM1 channels if they're enabled
+        if (pwm_enabled[4]) {
+            HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+        }
+        if (pwm_enabled[22]) {
+            HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_4);
+        }
+        
+        // Update the shared timer period
+        __HAL_TIM_SET_AUTORELOAD(&htim1, new_period);
+        
+        // Reset duty cycle to 0% when frequency changes (safe default)
+        if (pwm_enabled[4]) {
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
+        }
+        if (pwm_enabled[22]) {
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 0);
+        }
+        
+        // Restart both channels if they were enabled
+        if (pwm_enabled[4]) {
+            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+        }
+        if (pwm_enabled[22]) {
+            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+        }
     }
-    if (pwm_enabled[22]) {
-        HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_4);
+    // Handle TIM3 pins (GPIO 9, 10, 18, 26)
+    else if (gpio_num == 9 || gpio_num == 10 || gpio_num == 18 || gpio_num == 26) {
+        // Stop all TIM3 channels if they're enabled
+        if (pwm_enabled[9]) {
+            HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+        }
+        if (pwm_enabled[10]) {
+            HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
+        }
+        if (pwm_enabled[18]) {
+            HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_4);
+        }
+        if (pwm_enabled[26]) {
+            HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+        }
+        
+        // Update the shared timer period
+        __HAL_TIM_SET_AUTORELOAD(&htim3, new_period);
+        
+        // Reset duty cycle to 0% when frequency changes (safe default)
+        if (pwm_enabled[9]) {
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+        }
+        if (pwm_enabled[10]) {
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+        }
+        if (pwm_enabled[18]) {
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
+        }
+        if (pwm_enabled[26]) {
+            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
+        }
+        
+        // Restart all channels if they were enabled
+        if (pwm_enabled[9]) {
+            HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+        }
+        if (pwm_enabled[10]) {
+            HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+        }
+        if (pwm_enabled[18]) {
+            HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
+        }
+        if (pwm_enabled[26]) {
+            HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+        }
     }
-    
-    // Update the shared timer period
-    __HAL_TIM_SET_AUTORELOAD(&htim1, new_period);
-    
-    // Reset duty cycle to 0% when frequency changes (safe default)
-    if (pwm_enabled[4]) {
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
+    // Handle TIM16 pins (GPIO 16)
+    else if (gpio_num == 16) {
+        HAL_TIM_PWM_Stop(&htim16, TIM_CHANNEL_1);
+        __HAL_TIM_SET_AUTORELOAD(&htim16, new_period);
+        __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
+        HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
     }
-    if (pwm_enabled[22]) {
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 0);
-    }
-    
-    // Restart both channels if they were enabled
-    if (pwm_enabled[4]) {
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    }
-    if (pwm_enabled[22]) {
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+    // Handle TIM17 pins (GPIO 20)
+    else if (gpio_num == 20) {
+        HAL_TIM_PWM_Stop(&htim17, TIM_CHANNEL_1);
+        __HAL_TIM_SET_AUTORELOAD(&htim17, new_period);
+        __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 0);
+        HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
     }
 }
 
