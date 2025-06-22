@@ -76,26 +76,8 @@ static TIM_HandleTypeDef htim14;
 static TIM_HandleTypeDef htim16;
 static TIM_HandleTypeDef htim17;
 
-// ADC register base address (from STM32F070x6 reference manual)
-#define ADC1_BASE       (0x40012400UL)
-#define ADC1            ((ADC_TypeDef *)ADC1_BASE)
-
-// ADC register bit definitions
-#define ADC_CR_ADEN     (1U << 0)   // ADC Enable
-#define ADC_CR_ADSTART  (1U << 2)   // ADC Start
-#define ADC_CR_ADCAL    (1U << 31)  // ADC Calibration
-
-#define ADC_ISR_ADRDY   (1U << 0)   // ADC Ready
-#define ADC_ISR_EOC     (1U << 2)   // End of Conversion
-#define ADC_ISR_EOCAL   (1U << 11)  // End of Calibration
-
-#define ADC_CFGR1_RES_12BIT   (0U << 3)  // 12-bit resolution
-#define ADC_CFGR1_ALIGN       (1U << 5)  // Right alignment
-
-#define ADC_SMPR_SMP_13_5     (2U << 0)  // 13.5 cycles sampling time
-
-// RCC ADC clock enable bit
-#define RCC_APB2ENR_ADC1EN    (1U << 9)
+// ADC constants are already defined in stm32f070x6.h, so we don't need to redefine them
+// Using the existing definitions from the STM32 header files
 
 // PWM enabled flags and current periods
 static uint8_t pwm_enabled[GPIO_MAPPING_SIZE] = {0};
@@ -106,6 +88,9 @@ static uint8_t adc_enabled[GPIO_MAPPING_SIZE] = {0};
 
 // GPIO mode tracking: 0 = input, 1 = output, 2 = analog
 static uint8_t gpio_modes[GPIO_MAPPING_SIZE] = {0};
+
+// Forward declarations for ADC functions
+void GPIO_Wrapper_ADC_Disable(uint8_t gpio_num);
 
 void GPIO_Wrapper_Init(void)
 {
@@ -860,16 +845,17 @@ uint8_t GPIO_Wrapper_PWM_IsEnabled(uint8_t gpio_num)
 void GPIO_Wrapper_ADC_Init(void)
 {
     // Enable ADC clock
-    RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+    RCC->APB2ENR |= RCC_APB2ENR_ADCEN;
     
-    // Configure ADC
-    ADC1->CFGR1 = ADC_CFGR1_RES_12BIT;  // 12-bit resolution, right aligned
-    ADC1->SMPR = ADC_SMPR_SMP_13_5;     // 13.5 cycles sampling time
+    // Configure ADC for 12-bit resolution (default), right aligned (default)
+    ADC1->CFGR1 = 0;  // 12-bit resolution and right alignment are defaults
+    
+    // Set sampling time to 13.5 cycles (010b = 13.5 cycles)
+    ADC1->SMPR = (2U << ADC_SMPR_SMP_Pos);
     
     // Run ADC calibration
     ADC1->CR |= ADC_CR_ADCAL;
     while (ADC1->CR & ADC_CR_ADCAL);    // Wait for calibration to complete
-    while (!(ADC1->ISR & ADC_ISR_EOCAL)); // Wait for end of calibration
     
     // Enable ADC
     ADC1->CR |= ADC_CR_ADEN;
