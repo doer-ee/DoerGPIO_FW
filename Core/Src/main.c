@@ -79,9 +79,21 @@ void Process_UART_DMA_Buffer(uint16_t length);
   * @brief  The application entry point.
   * @retval int
   */
+#define VECTOR_TABLE_SIZE 48  // Covers 0xC0 bytes (16 + IRQs)
+#define APP_VECTOR_TABLE  ((uint32_t*)0x08002000)
+#define RAM_VECTOR_TABLE  ((uint32_t*)0x20000000)
+void relocate_vector_table_to_ram(void)
+{
+	for (uint32_t i = 0; i < VECTOR_TABLE_SIZE; i++) {
+		RAM_VECTOR_TABLE[i] = APP_VECTOR_TABLE[i];
+	}
+	__HAL_SYSCFG_REMAPMEMORY_SRAM();
+}
+
 int main(void)
 {
-
+	__enable_irq();
+	relocate_vector_table_to_ram();
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -314,6 +326,8 @@ void Process_UART_DMA_Buffer(uint16_t length) {
     // Check for "VV" command (version request)
     if (stop_index == 2 && uart_rx_dma_buffer[0] == 'V' && uart_rx_dma_buffer[1] == 'V') {
         HAL_UART_Transmit(&huart1, version_string, sizeof(version_string)-1, 1000);
+    } else if (stop_index == 2 && uart_rx_dma_buffer[0] == 'R' && uart_rx_dma_buffer[1] == 'R') {
+        NVIC_SystemReset();
     } else {
         // Process buffer in pairs up to stop_index
         char collective_response[1024] = {0}; // A large buffer for all responses
