@@ -1,7 +1,9 @@
-../Core/Src/main.c:82:5:main	16	static
-../Core/Src/main.c:147:6:SystemClock_Config	104	static
-../Core/Src/main.c:190:13:MX_USART1_UART_Init	8	static
-../Core/Src/main.c:226:13:MX_GPIO_Init	32	static
-../Core/Src/main.c:259:6:Error_Handler	8	static,ignoring_inline_asm
-../Core/Src/main.c:288:6:UART_IdleLine_Callback	16	static
-../Core/Src/main.c:297:6:Process_UART_DMA_Buffer	1160	static
+../Drivers/CMSIS/Include/core_cm0.h:856:34:__NVIC_SystemReset	8	static,ignoring_inline_asm
+../Core/Src/main.c:85:6:relocate_vector_table_to_ram	16	static
+../Core/Src/main.c:93:5:main	16	static,ignoring_inline_asm
+../Core/Src/main.c:159:6:SystemClock_Config	104	static
+../Core/Src/main.c:202:13:MX_USART1_UART_Init	8	static
+../Core/Src/main.c:238:13:MX_GPIO_Init	32	static
+../Core/Src/main.c:271:6:Error_Handler	8	static,ignoring_inline_asm
+../Core/Src/main.c:300:6:UART_IdleLine_Callback	16	static
+../Core/Src/main.c:309:6:Process_UART_DMA_Buffer	1160	static
