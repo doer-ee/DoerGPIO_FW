@@ -24,4 +24,3 @@ clean-Core-2f-Startup:
 	-$(RM) ./Core/Startup/startup_stm32f070c6tx.d ./Core/Startup/startup_stm32f070c6tx.o
 
 .PHONY: clean-Core-2f-Startup
-

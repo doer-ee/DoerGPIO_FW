@@ -60,7 +60,7 @@ typedef unsigned int     uint32_t;
  * Constants
  * -------------------------------------------------------------------------- */
 #define APP_ADDRESS    0x08002000U
-#define PAGE_SIZE      1024U
+#define PAGE_SIZE      2048U  /* STM32F070CB (128 KB flash) uses 2 KB pages */
 #define MAX_APP_SIZE   (120U * 1024U)  /* 120 KB application area (128 KB device - 8 KB bootloader) */
 
 #define PROTO_TRIGGER  0x7FU
@@ -297,7 +297,15 @@ static int do_update(void)
     }
 
     flash_lock();
+
+    /* Read back written flash and compute XOR for host verification */
+    uint8_t verify_xor = 0U;
+    volatile uint8_t *fptr = (volatile uint8_t*)APP_ADDRESS;
+    for (uint32_t i = 0U; i < fw_size; i++)
+        verify_xor ^= fptr[i];
+
     uart_send(PROTO_ACK);   /* final ACK — upload complete */
+    uart_send(verify_xor);  /* readback XOR checksum for host to verify */
     system_reset();          /* clean reboot so app starts with fresh peripheral state */
     return 1;               /* never reached */
 }
