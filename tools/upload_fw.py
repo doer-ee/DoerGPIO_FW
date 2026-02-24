@@ -40,6 +40,10 @@ ACK         = 0x79
 NAK         = 0x1F
 CHUNK_SIZE  = 64
 MAX_RETRIES = 3
+TRIGGER_ACK_WINDOW_SEC = 1.2
+TRIGGER_RETRY_GAP_SEC = 0.03
+TRIGGER_READ_TIMEOUT_SEC = 0.12
+TARGET_USB_IDS = ("1a86:7523",)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,21 +58,83 @@ def get_ports() -> set:
     return {p.device for p in serial.tools.list_ports.comports()}
 
 
+def is_target_board(port_info) -> bool:
+    hwid = (getattr(port_info, "hwid", "") or "").lower()
+    vid = getattr(port_info, "vid", None)
+    pid = getattr(port_info, "pid", None)
+
+    if vid is not None and pid is not None:
+        vid_pid = f"{vid:04x}:{pid:04x}"
+        if vid_pid in TARGET_USB_IDS:
+            return True
+
+    return any(usb_id in hwid for usb_id in TARGET_USB_IDS)
+
+
+def target_ports() -> set:
+    return {
+        p.device
+        for p in serial.tools.list_ports.comports()
+        if is_target_board(p)
+    }
+
+
+def wait_for_trigger_ack(ser: serial.Serial) -> Optional[int]:
+    deadline = time.monotonic() + TRIGGER_ACK_WINDOW_SEC
+    original_timeout = ser.timeout
+    ser.timeout = TRIGGER_READ_TIMEOUT_SEC
+
+    try:
+        ser.reset_input_buffer()
+        ser.reset_output_buffer()
+
+        while time.monotonic() < deadline:
+            ser.write(bytes([TRIGGER]))
+            ser.flush()
+
+            resp = ser.read(1)
+            if resp:
+                if resp[0] == ACK:
+                    return ACK
+                return resp[0]
+
+            time.sleep(TRIGGER_RETRY_GAP_SEC)
+
+        return None
+    finally:
+        ser.timeout = original_timeout
+
+
 # ── Board detection ──────────────────────────────────────────────────────────
 def wait_for_board(timeout_sec: int) -> Optional[str]:
     """
     Poll for a new serial port every 50 ms.
     Returns the port name as soon as one appears, or None on timeout.
     """
+    connected_now = target_ports()
+    if connected_now:
+        ports_text = ", ".join(sorted(connected_now))
+        print(f"Board already detected on: {ports_text}")
+        print("\n=== ACTION REQUIRED ===")
+        print("UNPLUG the board now, then PLUG it back in to start flashing.")
+        print("=======================\n")
+
     print(f"Waiting for board to be plugged in  (timeout: {timeout_sec}s) ...")
-    known    = get_ports()
     deadline = time.monotonic() + timeout_sec
+    unplug_seen = not connected_now
 
     while time.monotonic() < deadline:
-        current  = get_ports()
-        new_ports = current - known
-        if new_ports:
-            port = sorted(new_ports)[0]
+        current = target_ports()
+
+        if not unplug_seen:
+            if not current:
+                unplug_seen = True
+            else:
+                time.sleep(0.05)
+                continue
+
+        if current:
+            port = sorted(current)[0]
             print(f"  Board detected on: {port}")
             return port
         time.sleep(0.05)
@@ -88,14 +154,12 @@ def upload(port: str, firmware: bytes) -> bool:
 
     try:
         # ── Phase 1: trigger ──────────────────────────────────────────────
-        print("  Sending trigger ...")
-        ser.write(bytes([TRIGGER]))
-
-        resp = ser.read(1)
-        if not resp or resp[0] != ACK:
-            got = resp.hex() if resp else "nothing"
+        print("  Sending trigger (retry window 1.2s) ...")
+        trigger_resp = wait_for_trigger_ack(ser)
+        if trigger_resp != ACK:
+            got = f"0x{trigger_resp:02X}" if trigger_resp is not None else "nothing"
             print(f"  No ACK for trigger (got: {got})")
-            print("  Tip: plug the board in BEFORE the 0.5s bootloader window closes.")
+            print("  Tip: board likely left bootloader window; unplug/replug and retry.")
             return False
 
         # ── Phase 2: firmware size ────────────────────────────────────────
@@ -160,7 +224,21 @@ def upload(port: str, firmware: bytes) -> bool:
             print("  No final ACK from board.")
             return False
 
-        print("  Upload complete!  Board is rebooting into the application.")
+        # ── Phase 5: flash verification checksum ─────────────────────────
+        resp = ser.read(1)
+        if not resp:
+            print("  No verification byte from board (timeout).")
+            return False
+
+        board_xor = resp[0]
+        host_xor  = xor_checksum(firmware)
+
+        if board_xor != host_xor:
+            print(f"  FLASH VERIFICATION FAILED: host=0x{host_xor:02X}  board=0x{board_xor:02X}")
+            print("  Flash data is corrupted — board will not run new firmware.")
+            return False
+
+        print(f"  Flash verified OK (XOR=0x{board_xor:02X}).  Board is rebooting.")
         return True
 
     except Exception as exc:
