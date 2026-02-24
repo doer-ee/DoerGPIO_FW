@@ -103,8 +103,14 @@ def upload(port: str, firmware: bytes) -> bool:
         ser.write(struct.pack("<I", size))
 
         resp = ser.read(1)
-        if not resp or resp[0] != ACK:
-            print("  No ACK for size")
+        if not resp:
+            print("  No response for size (timeout)")
+            return False
+        if resp[0] == NAK:
+            print(f"  Bootloader rejected firmware size ({size} bytes) — binary too large?")
+            return False
+        if resp[0] != ACK:
+            print(f"  Unexpected response for size: 0x{resp[0]:02X}")
             return False
 
         print(f"  Uploading {size} bytes in {(size + CHUNK_SIZE - 1) // CHUNK_SIZE} chunks ...")

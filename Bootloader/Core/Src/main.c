@@ -61,7 +61,7 @@ typedef unsigned int     uint32_t;
  * -------------------------------------------------------------------------- */
 #define APP_ADDRESS    0x08002000U
 #define PAGE_SIZE      1024U
-#define MAX_APP_SIZE   (24U * 1024U)   /* 24 KB application area */
+#define MAX_APP_SIZE   (120U * 1024U)  /* 120 KB application area (128 KB device - 8 KB bootloader) */
 
 #define PROTO_TRIGGER  0x7FU
 #define PROTO_ACK      0x79U
@@ -219,7 +219,10 @@ static int do_update(void)
         fw_size |= ((uint32_t)b << (i * 8));
     }
 
-    if (fw_size == 0U || fw_size > MAX_APP_SIZE) return 0;
+    if (fw_size == 0U || fw_size > MAX_APP_SIZE) {
+        uart_send(PROTO_NAK);   /* tell host the size is rejected */
+        return 0;
+    }
 
     uart_send(PROTO_ACK);
 
