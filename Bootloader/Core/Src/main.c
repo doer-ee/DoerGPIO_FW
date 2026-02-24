@@ -232,16 +232,14 @@ static int do_update(void)
         uint32_t chunk = fw_size - bytes_done;
         if (chunk > CHUNK_SIZE) chunk = CHUNK_SIZE;
 
-        /* Receive chunk payload */
-        for (uint32_t i = 0U; i < chunk; i++) {
+        /* Always receive the full CHUNK_SIZE bytes — Python pads the last
+         * chunk with 0xFF so both sides stay in sync. */
+        for (uint32_t i = 0U; i < CHUNK_SIZE; i++) {
             if (!uart_recv(&buf[i], 2000U)) {
                 flash_lock();
                 return 0;
             }
         }
-
-        /* Pad remainder of chunk with 0xFF (erased flash value) */
-        for (uint32_t i = chunk; i < CHUNK_SIZE; i++) buf[i] = 0xFFU;
 
         /* Receive XOR checksum */
         if (!uart_recv(&b, 2000U)) {
