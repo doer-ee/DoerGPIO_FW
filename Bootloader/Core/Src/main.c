@@ -199,6 +199,22 @@ static int flash_write_halfword(uint32_t addr, uint16_t data)
 }
 
 /* --------------------------------------------------------------------------
+ * System reset (used after successful upload)
+ * -------------------------------------------------------------------------- */
+#define SCB_AIRCR   (*(volatile uint32_t*)0xE000ED0CU)
+
+static void system_reset(void)
+{
+    /* Wait for the final ACK byte to fully shift out before resetting */
+    while (!(USART1_ISR & (1U << 6)));  /* wait TC — Transmission Complete */
+
+    /* VECTKEY = 0x05FA, SYSRESETREQ = bit 2 */
+    SCB_AIRCR = 0x05FA0004U;
+
+    while (1);  /* wait for reset to occur */
+}
+
+/* --------------------------------------------------------------------------
  * Firmware update handler
  * -------------------------------------------------------------------------- */
 static int do_update(void)
@@ -282,7 +298,8 @@ static int do_update(void)
 
     flash_lock();
     uart_send(PROTO_ACK);   /* final ACK — upload complete */
-    return 1;
+    system_reset();          /* clean reboot so app starts with fresh peripheral state */
+    return 1;               /* never reached */
 }
 
 /* --------------------------------------------------------------------------
