@@ -1,5 +1,6 @@
 #include "gpio_wrapper.h"
 #include <stdint.h>
+#include <string.h>
 
 // GPIO pin mapping table
 static const GPIO_Mapping_t gpio_mapping[] = {
@@ -75,6 +76,8 @@ static TIM_HandleTypeDef htim3;
 static TIM_HandleTypeDef htim14;
 static TIM_HandleTypeDef htim16;
 static TIM_HandleTypeDef htim17;
+static GPIO_Wrapper_I2C_Bus_t i2c_buses[GPIO_WRAPPER_I2C_BUS_COUNT];
+static uint8_t i2c_active_bus = 0;
 
 // ADC constants are already defined in stm32f070x6.h, so we don't need to redefine them
 // Using the existing definitions from the STM32 header files
@@ -953,4 +956,171 @@ uint8_t GPIO_Wrapper_ADC_IsEnabled(uint8_t gpio_num)
         return 0;
     }
     return adc_enabled[gpio_num];
-} 
+}
+
+void GPIO_Wrapper_I2C_StateInit(void)
+{
+    memset(i2c_buses, 0, sizeof(i2c_buses));
+    i2c_buses[0].supported = 1;
+    i2c_buses[1].supported = 1;
+    i2c_active_bus = 0;
+}
+
+uint8_t GPIO_Wrapper_I2C_GetActiveBus(void)
+{
+    return i2c_active_bus;
+}
+
+uint8_t GPIO_Wrapper_I2C_Init(uint8_t bus)
+{
+    uint8_t idx;
+    uint8_t previous_bus;
+    uint8_t previous_idx;
+
+    if (bus == 0) {
+        return 0;
+    }
+
+    idx = bus - 1;
+    if (idx >= GPIO_WRAPPER_I2C_BUS_COUNT || !i2c_buses[idx].supported) {
+        return 0;
+    }
+
+    if (i2c_active_bus == bus && i2c_buses[idx].initialized) {
+        return 1;
+    }
+
+    previous_bus = i2c_active_bus;
+    if (previous_bus != 0 && previous_bus != bus) {
+        previous_idx = previous_bus - 1;
+        if (previous_idx < GPIO_WRAPPER_I2C_BUS_COUNT && i2c_buses[previous_idx].initialized) {
+            HAL_I2C_DeInit(&i2c_buses[previous_idx].hi2c);
+            i2c_buses[previous_idx].initialized = 0;
+        }
+    }
+
+    memset(&i2c_buses[idx].hi2c, 0, sizeof(i2c_buses[idx].hi2c));
+    i2c_buses[idx].hi2c.Instance = I2C1;
+    i2c_buses[idx].hi2c.Init.Timing = 0x2000090E;
+    i2c_buses[idx].hi2c.Init.OwnAddress1 = 0;
+    i2c_buses[idx].hi2c.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+    i2c_buses[idx].hi2c.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    i2c_buses[idx].hi2c.Init.OwnAddress2 = 0;
+    i2c_buses[idx].hi2c.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+    i2c_buses[idx].hi2c.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    i2c_buses[idx].hi2c.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+
+    i2c_active_bus = bus;
+
+    if (HAL_I2C_Init(&i2c_buses[idx].hi2c) != HAL_OK) {
+        i2c_active_bus = 0;
+        return 0;
+    }
+
+    i2c_buses[idx].initialized = 1;
+    return 1;
+}
+
+uint8_t GPIO_Wrapper_I2C_Scan(uint8_t bus, uint8_t *addresses, uint8_t *count)
+{
+    uint8_t idx;
+    uint8_t found = 0;
+    uint8_t addr;
+
+    if (count == NULL || bus == 0) {
+        return 0;
+    }
+
+    idx = bus - 1;
+    if (idx >= GPIO_WRAPPER_I2C_BUS_COUNT || !i2c_buses[idx].supported || !i2c_buses[idx].initialized || i2c_active_bus != bus) {
+        return 0;
+    }
+
+    *count = 0;
+
+    for (addr = 0x03; addr <= 0x77; ++addr) {
+        if (HAL_I2C_IsDeviceReady(&i2c_buses[idx].hi2c, (uint16_t)(addr << 1), 1, 10) == HAL_OK) {
+            if (addresses != NULL && found < GPIO_WRAPPER_I2C_MAX_SCAN_RESULTS) {
+                addresses[found] = addr;
+            }
+            if (found < GPIO_WRAPPER_I2C_MAX_SCAN_RESULTS) {
+                found++;
+            }
+        }
+    }
+
+    *count = found;
+    return 1;
+}
+
+uint8_t GPIO_Wrapper_I2C_Write(uint8_t bus, uint8_t addr, const uint8_t *data, uint8_t len)
+{
+    uint8_t idx;
+
+    if (bus == 0 || data == NULL || len == 0 || len > GPIO_WRAPPER_I2C_MAX_WRITE_BYTES) {
+        return 0;
+    }
+
+    idx = bus - 1;
+    if (idx >= GPIO_WRAPPER_I2C_BUS_COUNT || !i2c_buses[idx].supported || !i2c_buses[idx].initialized || i2c_active_bus != bus) {
+        return 0;
+    }
+
+    return HAL_I2C_Master_Transmit(&i2c_buses[idx].hi2c, (uint16_t)(addr << 1), (uint8_t *)data, len, 100) == HAL_OK;
+}
+
+uint8_t GPIO_Wrapper_I2C_Read(uint8_t bus, uint8_t addr, uint8_t *data, uint8_t len)
+{
+    uint8_t idx;
+
+    if (bus == 0 || data == NULL) {
+        return 0;
+    }
+
+    idx = bus - 1;
+    if (idx >= GPIO_WRAPPER_I2C_BUS_COUNT || !i2c_buses[idx].supported || !i2c_buses[idx].initialized || i2c_active_bus != bus) {
+        return 0;
+    }
+
+    if (len == 0) {
+        return 1;
+    }
+
+    return HAL_I2C_Master_Receive(&i2c_buses[idx].hi2c, (uint16_t)(addr << 1), data, len, 100) == HAL_OK;
+}
+
+uint8_t GPIO_Wrapper_I2C_WriteReg(uint8_t bus, uint8_t addr, uint8_t reg, const uint8_t *data, uint8_t len)
+{
+    uint8_t idx;
+
+    if (bus == 0 || data == NULL || len == 0 || len > GPIO_WRAPPER_I2C_MAX_WRITE_BYTES) {
+        return 0;
+    }
+
+    idx = bus - 1;
+    if (idx >= GPIO_WRAPPER_I2C_BUS_COUNT || !i2c_buses[idx].supported || !i2c_buses[idx].initialized || i2c_active_bus != bus) {
+        return 0;
+    }
+
+    return HAL_I2C_Mem_Write(&i2c_buses[idx].hi2c, (uint16_t)(addr << 1), reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)data, len, 100) == HAL_OK;
+}
+
+uint8_t GPIO_Wrapper_I2C_ReadReg(uint8_t bus, uint8_t addr, uint8_t reg, uint8_t *data, uint8_t len)
+{
+    uint8_t idx;
+
+    if (bus == 0 || data == NULL) {
+        return 0;
+    }
+
+    idx = bus - 1;
+    if (idx >= GPIO_WRAPPER_I2C_BUS_COUNT || !i2c_buses[idx].supported || !i2c_buses[idx].initialized || i2c_active_bus != bus) {
+        return 0;
+    }
+
+    if (len == 0) {
+        return 1;
+    }
+
+    return HAL_I2C_Mem_Read(&i2c_buses[idx].hi2c, (uint16_t)(addr << 1), reg, I2C_MEMADD_SIZE_8BIT, data, len, 100) == HAL_OK;
+}

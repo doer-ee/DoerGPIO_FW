@@ -2,6 +2,7 @@
 #define GPIO_WRAPPER_H
 
 #include "stm32f0xx_hal.h"
+#include "stm32f0xx_hal_i2c.h"
 #include "stm32f0xx_hal_tim.h"
 #include <stdint.h>
 
@@ -58,5 +59,24 @@ uint8_t GPIO_Wrapper_ADC_Enable(uint8_t gpio_num);
 void GPIO_Wrapper_ADC_Disable(uint8_t gpio_num);
 uint16_t GPIO_Wrapper_ADC_Read(uint8_t gpio_num);
 uint8_t GPIO_Wrapper_ADC_IsEnabled(uint8_t gpio_num);
+
+#define GPIO_WRAPPER_I2C_BUS_COUNT        2
+#define GPIO_WRAPPER_I2C_MAX_WRITE_BYTES  24
+#define GPIO_WRAPPER_I2C_MAX_SCAN_RESULTS 32
+
+typedef struct {
+    I2C_HandleTypeDef hi2c;
+    uint8_t initialized;
+    uint8_t supported;
+} GPIO_Wrapper_I2C_Bus_t;
+
+void GPIO_Wrapper_I2C_StateInit(void);
+uint8_t GPIO_Wrapper_I2C_GetActiveBus(void);
+uint8_t GPIO_Wrapper_I2C_Init(uint8_t bus);
+uint8_t GPIO_Wrapper_I2C_Scan(uint8_t bus, uint8_t *addresses, uint8_t *count);
+uint8_t GPIO_Wrapper_I2C_Write(uint8_t bus, uint8_t addr, const uint8_t *data, uint8_t len);
+uint8_t GPIO_Wrapper_I2C_Read(uint8_t bus, uint8_t addr, uint8_t *data, uint8_t len);
+uint8_t GPIO_Wrapper_I2C_WriteReg(uint8_t bus, uint8_t addr, uint8_t reg, const uint8_t *data, uint8_t len);
+uint8_t GPIO_Wrapper_I2C_ReadReg(uint8_t bus, uint8_t addr, uint8_t reg, uint8_t *data, uint8_t len);
 
 #endif /* GPIO_WRAPPER_H */ 

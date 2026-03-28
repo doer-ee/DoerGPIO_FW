@@ -74,8 +74,24 @@ The first character of each command selects the GPIO pin:
 | `P` | Enable PWM | `GPIO#: PWM enabled` |
 | `F<freq>` | Set PWM frequency (Hz) | `GPIO#: Freq 1000` |
 | `C<duty>` | Set PWM duty cycle (0–100) | `GPIO#: Duty 50%` |
-| `VV` | Read firmware version | `DoerGPIO_HW0.2_SW0.1` |
+| `VV` | Read firmware version | `DoerGPIO_HW0.2_SW0.2` |
 | `RR` | System reset | *(board resets)* |
+
+### I2C Route
+
+Use bus `1` for I2C1 on:
+
+| Bus | Peripheral | SCL | SDA |
+|-----|------------|-----|-----|
+| `1` | I2C1 | GPIO 16 (PB8) | GPIO 20 (PB9) |
+
+Initialize it before scanning or reading devices:
+
+```text
+@1INZ   # use GPIO 16 / GPIO 20
+```
+
+This route overlaps PWM-capable GPIO 16 / GPIO 20.
 
 ### Examples
 

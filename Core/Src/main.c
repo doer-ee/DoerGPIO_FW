@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stddef.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -54,10 +55,11 @@ uint8_t uart_rx_recived[] = "Received\r\n";
 #define UART_RX_BUFFER_SIZE 64
 uint8_t uart_rx_buffer[UART_RX_BUFFER_SIZE];
 uint8_t uart_rx_index = 0;
-uint8_t version_string[] = "DoerGPIO_HW0.2_SW0.1\r\n";
+uint8_t version_string[] = "DoerGPIO_HW0.2_SW0.2\r\n";
 #define UART_RX_DMA_BUFFER_SIZE 64
 uint8_t uart_rx_dma_buffer[UART_RX_DMA_BUFFER_SIZE];
 volatile uint16_t uart_rx_dma_index = 0;
+static uint8_t i2c_bus_initialized[GPIO_WRAPPER_I2C_BUS_COUNT] = {0};
 
 /* USER CODE END PV */
 
@@ -68,6 +70,7 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void UART_IdleLine_Callback(void);
 void Process_UART_DMA_Buffer(uint16_t length);
+void Process_I2C_Command(uint16_t length);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -120,6 +123,7 @@ int main(void)
   GPIO_Wrapper_Init();
   GPIO_Wrapper_PWM_Init();
   GPIO_Wrapper_ADC_Init();
+  GPIO_Wrapper_I2C_StateInit();
   GPIO_Config_t config = {
       .mode = GPIO_WRAPPER_MODE_OUTPUT,
       .pull = GPIO_WRAPPER_PULL_UP,
@@ -323,6 +327,14 @@ void Process_UART_DMA_Buffer(uint16_t length) {
         return;
     }
 
+    if (uart_rx_dma_buffer[0] == '@') {
+        Process_I2C_Command(stop_index);
+        memset(uart_rx_dma_buffer, 0, UART_RX_DMA_BUFFER_SIZE);
+        HAL_UART_DMAStop(&huart1);
+        HAL_UART_Receive_DMA(&huart1, uart_rx_dma_buffer, UART_RX_DMA_BUFFER_SIZE);
+        return;
+    }
+
     // Check for "VV" command (version request)
     if (stop_index == 2 && uart_rx_dma_buffer[0] == 'V' && uart_rx_dma_buffer[1] == 'V') {
         HAL_UART_Transmit(&huart1, version_string, sizeof(version_string)-1, 1000);
@@ -492,4 +504,257 @@ void Process_UART_DMA_Buffer(uint16_t length) {
     HAL_UART_DMAStop(&huart1);
     // Restart DMA reception for next message
     HAL_UART_Receive_DMA(&huart1, uart_rx_dma_buffer, UART_RX_DMA_BUFFER_SIZE);
+}
+
+static int hex_value(uint8_t ch)
+{
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    }
+    return -1;
+}
+
+static bool parse_hex_byte_pair(uint8_t hi, uint8_t lo, uint8_t *out)
+{
+    int high = hex_value(hi);
+    int low = hex_value(lo);
+
+    if (high < 0 || low < 0 || out == NULL) {
+        return false;
+    }
+
+    *out = (uint8_t)((high << 4) | low);
+    return true;
+}
+
+static void send_i2c_response(uint8_t bus, const char *message)
+{
+    char response[160];
+    int len = snprintf(response, sizeof(response), "I2C%d: %s\r\n", bus, message);
+
+    if (len > 0) {
+        HAL_UART_Transmit(&huart1, (uint8_t *)response, (uint16_t)len, 1000);
+    }
+}
+
+void Process_I2C_Command(uint16_t length)
+{
+    uint8_t bus;
+    char opcode[3] = {0};
+
+    if (length < 4 || uart_rx_dma_buffer[0] != '@') {
+        send_i2c_response(0, "ERR ARG");
+        return;
+    }
+
+    if (uart_rx_dma_buffer[1] < '0' || uart_rx_dma_buffer[1] > '9') {
+        send_i2c_response(0, "ERR BUS");
+        return;
+    }
+
+    bus = (uint8_t)(uart_rx_dma_buffer[1] - '0');
+    opcode[0] = (char)uart_rx_dma_buffer[2];
+    opcode[1] = (char)uart_rx_dma_buffer[3];
+
+    if (bus == 0 || bus > GPIO_WRAPPER_I2C_BUS_COUNT) {
+        send_i2c_response(bus, "ERR BUS");
+        return;
+    }
+
+    if (strcmp(opcode, "IN") == 0) {
+        uint8_t i;
+
+        if (length != 4) {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        for (i = 0; i < GPIO_WRAPPER_I2C_BUS_COUNT; ++i) {
+            i2c_bus_initialized[i] = 0;
+        }
+
+        if (GPIO_Wrapper_I2C_Init(bus) && GPIO_Wrapper_I2C_GetActiveBus() == bus) {
+            i2c_bus_initialized[bus - 1] = 1;
+            send_i2c_response(bus, "OK INIT");
+        } else {
+            send_i2c_response(bus, "ERR BUS");
+        }
+        return;
+    }
+
+    if (!i2c_bus_initialized[bus - 1]) {
+        send_i2c_response(bus, "ERR NOT_INIT");
+        return;
+    }
+
+    if (strcmp(opcode, "SC") == 0) {
+        uint8_t addresses[GPIO_WRAPPER_I2C_MAX_SCAN_RESULTS] = {0};
+        uint8_t count = 0;
+        char response[160];
+        int offset = 0;
+        uint8_t i;
+
+        if (length != 4) {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        if (!GPIO_Wrapper_I2C_Scan(bus, addresses, &count)) {
+            send_i2c_response(bus, "ERR NOT_INIT");
+            return;
+        }
+
+        if (count == 0) {
+            send_i2c_response(bus, "SCAN NONE");
+            return;
+        }
+
+        offset = snprintf(response, sizeof(response), "I2C%d: SCAN", bus);
+        for (i = 0; i < count && offset > 0 && offset < (int)sizeof(response); ++i) {
+            offset += snprintf(response + offset, sizeof(response) - (size_t)offset, " %02X", addresses[i]);
+        }
+        if (offset > 0 && offset < (int)sizeof(response)) {
+            offset += snprintf(response + offset, sizeof(response) - (size_t)offset, "\r\n");
+        }
+        if (offset > 0) {
+            HAL_UART_Transmit(&huart1, (uint8_t *)response, (uint16_t)offset, 1000);
+        }
+        return;
+    }
+
+    if (strcmp(opcode, "WR") == 0) {
+        uint8_t addr;
+        uint8_t payload[GPIO_WRAPPER_I2C_MAX_WRITE_BYTES] = {0};
+        uint8_t payload_len = 0;
+        uint16_t index;
+
+        if (length < 7 || !parse_hex_byte_pair(uart_rx_dma_buffer[4], uart_rx_dma_buffer[5], &addr) || uart_rx_dma_buffer[6] != ',') {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        if (((length - 7) == 0) || (((length - 7) % 2) != 0)) {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        for (index = 7; index + 1 < length; index += 2) {
+            if (payload_len >= GPIO_WRAPPER_I2C_MAX_WRITE_BYTES || !parse_hex_byte_pair(uart_rx_dma_buffer[index], uart_rx_dma_buffer[index + 1], &payload[payload_len])) {
+                send_i2c_response(bus, "ERR ARG");
+                return;
+            }
+            payload_len++;
+        }
+
+        if (GPIO_Wrapper_I2C_Write(bus, addr, payload, payload_len)) {
+            send_i2c_response(bus, "OK WRITE");
+        } else {
+            send_i2c_response(bus, "ERR NACK");
+        }
+        return;
+    }
+
+    if (strcmp(opcode, "RD") == 0) {
+        uint8_t addr;
+        uint8_t read_len;
+        uint8_t data[GPIO_WRAPPER_I2C_MAX_WRITE_BYTES] = {0};
+        char response[160];
+        int offset;
+        uint8_t i;
+
+        if (length != 9 || !parse_hex_byte_pair(uart_rx_dma_buffer[4], uart_rx_dma_buffer[5], &addr) || uart_rx_dma_buffer[6] != ',' || !parse_hex_byte_pair(uart_rx_dma_buffer[7], uart_rx_dma_buffer[8], &read_len) || read_len > GPIO_WRAPPER_I2C_MAX_WRITE_BYTES) {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        if (!GPIO_Wrapper_I2C_Read(bus, addr, data, read_len)) {
+            send_i2c_response(bus, "ERR NACK");
+            return;
+        }
+
+        offset = snprintf(response, sizeof(response), "I2C%d: RX", bus);
+        for (i = 0; i < read_len && offset > 0 && offset < (int)sizeof(response); ++i) {
+            offset += snprintf(response + offset, sizeof(response) - (size_t)offset, " %02X", data[i]);
+        }
+        if (offset > 0 && offset < (int)sizeof(response)) {
+            offset += snprintf(response + offset, sizeof(response) - (size_t)offset, "\r\n");
+        }
+        if (offset > 0) {
+            HAL_UART_Transmit(&huart1, (uint8_t *)response, (uint16_t)offset, 1000);
+        }
+        return;
+    }
+
+    if (strcmp(opcode, "MW") == 0) {
+        uint8_t addr;
+        uint8_t reg;
+        uint8_t payload[GPIO_WRAPPER_I2C_MAX_WRITE_BYTES] = {0};
+        uint8_t payload_len = 0;
+        uint16_t index;
+
+        if (length < 10 || !parse_hex_byte_pair(uart_rx_dma_buffer[4], uart_rx_dma_buffer[5], &addr) || uart_rx_dma_buffer[6] != ',' || !parse_hex_byte_pair(uart_rx_dma_buffer[7], uart_rx_dma_buffer[8], &reg) || uart_rx_dma_buffer[9] != ',') {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        if (((length - 10) == 0) || (((length - 10) % 2) != 0)) {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        for (index = 10; index + 1 < length; index += 2) {
+            if (payload_len >= GPIO_WRAPPER_I2C_MAX_WRITE_BYTES || !parse_hex_byte_pair(uart_rx_dma_buffer[index], uart_rx_dma_buffer[index + 1], &payload[payload_len])) {
+                send_i2c_response(bus, "ERR ARG");
+                return;
+            }
+            payload_len++;
+        }
+
+        if (GPIO_Wrapper_I2C_WriteReg(bus, addr, reg, payload, payload_len)) {
+            send_i2c_response(bus, "OK WRITE_REG");
+        } else {
+            send_i2c_response(bus, "ERR NACK");
+        }
+        return;
+    }
+
+    if (strcmp(opcode, "MR") == 0) {
+        uint8_t addr;
+        uint8_t reg;
+        uint8_t read_len;
+        uint8_t data[GPIO_WRAPPER_I2C_MAX_WRITE_BYTES] = {0};
+        char response[160];
+        int offset;
+        uint8_t i;
+
+        if (length != 12 || !parse_hex_byte_pair(uart_rx_dma_buffer[4], uart_rx_dma_buffer[5], &addr) || uart_rx_dma_buffer[6] != ',' || !parse_hex_byte_pair(uart_rx_dma_buffer[7], uart_rx_dma_buffer[8], &reg) || uart_rx_dma_buffer[9] != ',' || !parse_hex_byte_pair(uart_rx_dma_buffer[10], uart_rx_dma_buffer[11], &read_len) || read_len > GPIO_WRAPPER_I2C_MAX_WRITE_BYTES) {
+            send_i2c_response(bus, "ERR ARG");
+            return;
+        }
+
+        if (!GPIO_Wrapper_I2C_ReadReg(bus, addr, reg, data, read_len)) {
+            send_i2c_response(bus, "ERR NACK");
+            return;
+        }
+
+        offset = snprintf(response, sizeof(response), "I2C%d: RX", bus);
+        for (i = 0; i < read_len && offset > 0 && offset < (int)sizeof(response); ++i) {
+            offset += snprintf(response + offset, sizeof(response) - (size_t)offset, " %02X", data[i]);
+        }
+        if (offset > 0 && offset < (int)sizeof(response)) {
+            offset += snprintf(response + offset, sizeof(response) - (size_t)offset, "\r\n");
+        }
+        if (offset > 0) {
+            HAL_UART_Transmit(&huart1, (uint8_t *)response, (uint16_t)offset, 1000);
+        }
+        return;
+    }
+
+    send_i2c_response(bus, "ERR ARG");
 }
