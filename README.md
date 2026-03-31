@@ -77,21 +77,23 @@ The first character of each command selects the GPIO pin:
 | `VV` | Read firmware version | `DoerGPIO_HW0.2_SW0.2` |
 | `RR` | System reset | *(board resets)* |
 
-### I2C Route
+### I2C Routes
 
-Use bus `1` for I2C1 on:
+The firmware exposes two selectable I2C1 routes:
 
 | Bus | Peripheral | SCL | SDA |
 |-----|------------|-----|-----|
 | `1` | I2C1 | GPIO 16 (PB8) | GPIO 20 (PB9) |
+| `2` | I2C1 | GPIO 3 (PB6) | GPIO 2 (PB7) |
 
-Initialize it before scanning or reading devices:
+Initialize the route you want before scanning or reading devices:
 
 ```text
 @1INZ   # use GPIO 16 / GPIO 20
+@2INZ   # use GPIO 3 / GPIO 2
 ```
 
-This route overlaps PWM-capable GPIO 16 / GPIO 20.
+Bus `1` and bus `2` are alternate pin routes for the same I2C1 peripheral, so only one route is active at a time. Bus `1` overlaps PWM-capable GPIO 16 / GPIO 20.
 
 ### Examples
 
