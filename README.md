@@ -26,6 +26,7 @@ On power-up, the bootloader waits **500 ms** for a trigger byte from the host. I
 - **28 GPIO pins** (GPIOA, GPIOB, GPIOF) with unified numbering
 - **12-bit ADC** on 8 pins
 - **PWM** on 8 pins across 5 timers (TIM1, TIM3, TIM14, TIM16, TIM17)
+- **Hardware I2C** on two selectable I2C1 pin routes (GPIO 16/20 or GPIO 3/2)
 - **UART command interface** at 230400 baud, ASCII-based, DMA + idle-line interrupt driven
 - **Bootloader** with chunk-based XOR-verified flashing and automatic system reset
 - **Python upload tool** with auto device detection and progress reporting
